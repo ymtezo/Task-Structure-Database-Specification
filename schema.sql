@@ -1,6 +1,7 @@
 -- Task Structure Database Specification
 -- .tsk ファイル形式のデータベーススキーマ定義
 -- 各種タスク管理手法（タスクシュート、GTD、ポモドーロ、カンバン、アイゼンハワーマトリクス等）を参考に設計
+-- 対応ツール: Google Tasks, Microsoft To Do, TickTick, Todoist, TaskChute, Notion, Asana, Trello 等
 
 -- =============================================
 -- プロジェクトテーブル
@@ -8,11 +9,26 @@
 -- =============================================
 CREATE TABLE projects (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT    NOT NULL,               -- プロジェクト名
+    name        TEXT    NOT NULL,               -- プロジェクト名（リスト名）
     description TEXT,                           -- 説明
     color       TEXT,                           -- 表示色 (例: "#FF5733")
+    sort_order  INTEGER NOT NULL DEFAULT 0,     -- 並び順（MS Todo displayOrder, Todoist order）
+    is_archived BOOLEAN NOT NULL DEFAULT 0,     -- アーカイブ済みフラグ（Todoist, TickTick）
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =============================================
+-- セクションテーブル
+-- Todoist のセクション、TickTick のプロジェクト内カラムに対応
+-- =============================================
+CREATE TABLE sections (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,               -- セクション名
+    project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                                                -- 所属プロジェクト
+    sort_order  INTEGER NOT NULL DEFAULT 0,     -- 並び順
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- =============================================
@@ -48,6 +64,7 @@ CREATE TABLE tasks (
     -- タスクシュート: ルーティン管理
     is_routine          BOOLEAN NOT NULL DEFAULT 0,     -- ルーティンタスクかどうか
     routine_pattern     TEXT,                           -- 繰り返しパターン (例: "DAILY", "WEEKLY:MON,WED", "MONTHLY:1")
+    recurrence_rule     TEXT,                           -- iCalendar RRULE形式の繰り返しルール (MS Todo, Google Tasks, TickTick 標準形式)
 
     -- GTD: 完了・ステータス管理
     status              TEXT    NOT NULL DEFAULT 'inbox'
@@ -84,10 +101,16 @@ CREATE TABLE tasks (
 
     -- 期限管理
     due_date            DATE,                           -- 締切日
+    due_datetime        DATETIME,                       -- 締切日時（時刻付き、Google Tasks・TickTick・MS Todo）
+    due_string          TEXT,                           -- 自然言語形式の期限 (例: "tomorrow", "next Monday") (Todoist)
+    is_all_day          BOOLEAN NOT NULL DEFAULT 0,     -- 終日フラグ (TickTick: isAllDay)
+    timezone            TEXT,                           -- タイムゾーン (例: "Asia/Tokyo") (TickTick, Google Tasks)
     reminder_at         DATETIME,                       -- リマインダー日時
 
     -- 関連付け
     project_id          INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    section_id          INTEGER REFERENCES sections(id) ON DELETE SET NULL,
+                                                        -- セクション（Todoist section, TickTick column）
     context_id          INTEGER REFERENCES contexts(id) ON DELETE SET NULL,
     parent_task_id      INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
                                                         -- 親タスク（サブタスク対応）
@@ -104,6 +127,9 @@ CREATE TABLE tasks (
     attachment_path     TEXT,                           -- 添付ファイルパス
 
     -- メタデータ
+    assignee            TEXT,                           -- 担当者 (Todoist assignee, TickTick assignee)
+    sort_order          INTEGER,                        -- 汎用並び順 (Todoist order, TickTick sortOrder, MS Todo displayOrder)
+    external_id         TEXT,                           -- 元ツールのタスクID（インポート・エクスポート時の参照用）
     source_tool         TEXT,                           -- 作成元ツール (例: "TaskChute", "Todoist", "Notion")
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -148,6 +174,8 @@ CREATE INDEX idx_tasks_scheduled_date  ON tasks(scheduled_date);
 CREATE INDEX idx_tasks_due_date        ON tasks(due_date);
 CREATE INDEX idx_tasks_status          ON tasks(status);
 CREATE INDEX idx_tasks_project_id      ON tasks(project_id);
+CREATE INDEX idx_tasks_section_id      ON tasks(section_id);
 CREATE INDEX idx_tasks_parent_task_id  ON tasks(parent_task_id);
+CREATE INDEX idx_tasks_external_id     ON tasks(external_id);
 CREATE INDEX idx_task_logs_task_id     ON task_logs(task_id);
 CREATE INDEX idx_task_logs_log_date    ON task_logs(log_date);
