@@ -6,14 +6,15 @@
 -- =============================================
 -- プロジェクトテーブル
 -- GTD・タスクシュートのプロジェクト概念に対応
+-- Google Tasks: tasklist, MS Todo: todoTaskList, TickTick: project, Todoist: project
 -- =============================================
 CREATE TABLE projects (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT    NOT NULL,               -- プロジェクト名（リスト名）
+    name        TEXT    NOT NULL,               -- プロジェクト名（リスト名）(Google Tasks: title, MS Todo: displayName, TickTick: name, Todoist: name)
     description TEXT,                           -- 説明
-    color       TEXT,                           -- 表示色 (例: "#FF5733")
-    sort_order  INTEGER NOT NULL DEFAULT 0,     -- 並び順（MS Todo displayOrder, Todoist order）
-    is_archived BOOLEAN NOT NULL DEFAULT 0,     -- アーカイブ済みフラグ（Todoist, TickTick）
+    color       TEXT,                           -- 表示色 (例: "#FF5733") (TickTick: color, Todoist: color)
+    sort_order  INTEGER NOT NULL DEFAULT 0,     -- 並び順 (MS Todo: displayOrder, Todoist: order, TickTick: sortOrder)
+    is_archived BOOLEAN NOT NULL DEFAULT 0,     -- アーカイブ済みフラグ (Todoist: is_archived, TickTick: closed)
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -21,13 +22,14 @@ CREATE TABLE projects (
 -- =============================================
 -- セクションテーブル
 -- Todoist のセクション、TickTick のプロジェクト内カラムに対応
+-- Todoist: section, TickTick: column (projectId 配下)
 -- =============================================
 CREATE TABLE sections (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT    NOT NULL,               -- セクション名
+    name        TEXT    NOT NULL,               -- セクション名 (Todoist: name, TickTick: name)
     project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-                                                -- 所属プロジェクト
-    sort_order  INTEGER NOT NULL DEFAULT 0,     -- 並び順
+                                                -- 所属プロジェクト (Todoist: project_id, TickTick: projectId)
+    sort_order  INTEGER NOT NULL DEFAULT 0,     -- 並び順 (Todoist: order, TickTick: sortOrder)
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -51,20 +53,20 @@ CREATE TABLE tasks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 
     -- 基本情報
-    title               TEXT    NOT NULL,       -- タスク名（必須）
-    description         TEXT,                   -- 詳細メモ・説明
+    title               TEXT    NOT NULL,       -- タスク名（必須）(Google Tasks: title, MS Todo: title, TickTick: title, Todoist: content)
+    description         TEXT,                   -- 詳細メモ・説明 (Google Tasks: notes, MS Todo: body, TickTick: content, Todoist: description)
 
     -- タスクシュート: スケジュール・時間管理
-    scheduled_date      DATE,                   -- 実施予定日
-    start_time          DATETIME,               -- 実際の開始時刻
-    end_time            DATETIME,               -- 実際の終了時刻
-    estimated_minutes   INTEGER,                -- 見積もり時間（分）
-    actual_minutes      INTEGER,                -- 実績時間（分）
+    scheduled_date      DATE,                   -- 実施予定日 (タスクシュート: 実施日, TickTick: startDate)
+    start_time          DATETIME,               -- 実際の開始時刻 (タスクシュート: 開始時刻, TickTick: startDate+time)
+    end_time            DATETIME,               -- 実際の終了時刻 (タスクシュート: 終了時刻, TickTick: dueDate+time)
+    estimated_minutes   INTEGER,                -- 見積もり時間（分）(タスクシュート: 予定時間)
+    actual_minutes      INTEGER,                -- 実績時間（分）(タスクシュート: 実績時間)
 
     -- タスクシュート: ルーティン管理
-    is_routine          BOOLEAN NOT NULL DEFAULT 0,     -- ルーティンタスクかどうか
-    routine_pattern     TEXT,                           -- 繰り返しパターン (例: "DAILY", "WEEKLY:MON,WED", "MONTHLY:1")
-    recurrence_rule     TEXT,                           -- iCalendar RRULE形式の繰り返しルール (MS Todo, Google Tasks, TickTick 標準形式)
+    is_routine          BOOLEAN NOT NULL DEFAULT 0,     -- ルーティンタスクかどうか (タスクシュート固有)
+    routine_pattern     TEXT,                           -- 繰り返しパターン (例: "DAILY", "WEEKLY:MON,WED", "MONTHLY:1") (タスクシュート固有)
+    recurrence_rule     TEXT,                           -- iCalendar RRULE形式の繰り返しルール (Google Tasks: recurrence, MS Todo: recurrence, TickTick: repeatFlag)
 
     -- GTD: 完了・ステータス管理
     status              TEXT    NOT NULL DEFAULT 'inbox'
@@ -77,18 +79,19 @@ CREATE TABLE tasks (
                             'done',         -- 完了
                             'cancelled'     -- キャンセル
                         )),
-    is_completed        BOOLEAN NOT NULL DEFAULT 0,     -- 完了フラグ
-    completed_at        DATETIME,                       -- 完了日時
+                        -- (Google Tasks: status, MS Todo: status, TickTick: status)
+    is_completed        BOOLEAN NOT NULL DEFAULT 0,     -- 完了フラグ (Google Tasks: status=completed, MS Todo: status=completed, TickTick: status=2, Todoist: is_completed)
+    completed_at        DATETIME,                       -- 完了日時 (Google Tasks: completed, MS Todo: completedDateTime, TickTick: completedTime, Todoist: completed_at)
 
     -- カンバン: ボード列管理
     board_column        TEXT,                           -- カンバンのカラム名 (例: "Backlog", "Todo", "In Progress", "Review", "Done")
     board_order         INTEGER,                        -- カラム内の並び順
 
     -- アイゼンハワーマトリクス: 優先度
-    is_urgent           BOOLEAN NOT NULL DEFAULT 0,     -- 緊急かどうか
-    is_important        BOOLEAN NOT NULL DEFAULT 0,     -- 重要かどうか
+    is_urgent           BOOLEAN NOT NULL DEFAULT 0,     -- 緊急かどうか (アイゼンハワーマトリクス固有)
+    is_important        BOOLEAN NOT NULL DEFAULT 0,     -- 重要かどうか (アイゼンハワーマトリクス固有, MS Todo: importance=high のとき true)
     priority            INTEGER NOT NULL DEFAULT 3
-                        CHECK(priority BETWEEN 1 AND 5),-- 優先度 1(最高)〜5(最低)
+                        CHECK(priority BETWEEN 1 AND 5),-- 優先度 1(最高)〜5(最低) (MS Todo: importance, TickTick: priority, Todoist: priority)
 
     -- ポモドーロテクニック
     pomodoro_count      INTEGER NOT NULL DEFAULT 0,     -- 消費したポモドーロ数（実績）
@@ -100,36 +103,38 @@ CREATE TABLE tasks (
                                                         -- 必要エネルギーレベル
 
     -- 期限管理
-    due_date            DATE,                           -- 締切日
-    due_datetime        DATETIME,                       -- 締切日時（時刻付き、Google Tasks・TickTick・MS Todo）
-    due_string          TEXT,                           -- 自然言語形式の期限 (例: "tomorrow", "next Monday") (Todoist)
+    due_date            DATE,                           -- 締切日（日付のみ）(Google Tasks: due の日付部分, MS Todo: dueDateTime の日付部分, TickTick: dueDate, Todoist: due.date)
+    due_datetime        DATETIME,                       -- 締切日時（時刻付き）(Google Tasks: due, MS Todo: dueDateTime, TickTick: dueDate, Todoist: due.datetime)
+    due_string          TEXT,                           -- 自然言語形式の期限 (例: "tomorrow", "next Monday") (Todoist: due.string)
     is_all_day          BOOLEAN NOT NULL DEFAULT 0,     -- 終日フラグ (TickTick: isAllDay)
-    timezone            TEXT,                           -- タイムゾーン (例: "Asia/Tokyo") (TickTick, Google Tasks)
-    reminder_at         DATETIME,                       -- リマインダー日時
+    timezone            TEXT,                           -- タイムゾーン (例: "Asia/Tokyo") (TickTick: timeZone, Google Tasks: タイムゾーン)
+    reminder_at         DATETIME,                       -- リマインダー日時 (MS Todo: reminderDateTime, TickTick: reminders[0], Todoist: reminders)
 
     -- 関連付け
     project_id          INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                                                        -- プロジェクト／リスト (Google Tasks: tasklist id, MS Todo: todoTaskList id, TickTick: projectId, Todoist: project_id)
     section_id          INTEGER REFERENCES sections(id) ON DELETE SET NULL,
-                                                        -- セクション（Todoist section, TickTick column）
+                                                        -- セクション (Todoist: section_id, TickTick: columnId)
     context_id          INTEGER REFERENCES contexts(id) ON DELETE SET NULL,
+                                                        -- コンテキスト／モード (GTD: @場所/@ツール, タスクシュート: モード)
     parent_task_id      INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
-                                                        -- 親タスク（サブタスク対応）
+                                                        -- 親タスク（サブタスク対応）(Google Tasks: parent, TickTick: parentId, Todoist: parent_id)
 
     -- チェックリスト・サブタスク情報
     checklist_total     INTEGER NOT NULL DEFAULT 0,     -- チェックリスト項目数
     checklist_done      INTEGER NOT NULL DEFAULT 0,     -- 完了済みチェックリスト項目数
 
     -- タグ（カンマ区切りで複数保存、または別テーブルで管理）
-    tags                TEXT,                           -- タグ (例: "仕事,会議,重要")
+    tags                TEXT,                           -- タグ (TickTick: tags, Todoist: labels) (カンマ区切り, 例: "仕事,会議,重要")
 
     -- ファイル添付・リンク
     url                 TEXT,                           -- 関連URL
     attachment_path     TEXT,                           -- 添付ファイルパス
 
     -- メタデータ
-    assignee            TEXT,                           -- 担当者 (Todoist assignee, TickTick assignee)
-    sort_order          INTEGER,                        -- 汎用並び順 (Todoist order, TickTick sortOrder, MS Todo displayOrder)
-    external_id         TEXT,                           -- 元ツールのタスクID（インポート・エクスポート時の参照用）
+    assignee            TEXT,                           -- 担当者 (Todoist: assignee_id, TickTick: assignee)
+    sort_order          INTEGER,                        -- 汎用並び順 (Google Tasks: position, MS Todo: displayOrder, TickTick: sortOrder, Todoist: order)
+    external_id         TEXT,                           -- 元ツールのタスクID（インポート・エクスポート時の参照用）(各ツール共通: id)
     source_tool         TEXT,                           -- 作成元ツール (例: "TaskChute", "Todoist", "Notion")
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
